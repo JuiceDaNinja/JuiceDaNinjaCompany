@@ -18,18 +18,20 @@
     }
     * { box-sizing: border-box; }
     body {
-  margin: 0;
+   margin: 0;
   min-height: 100vh;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
 
-  background-image: url("images/background.jpg");
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+    url("./images/background.png");
+
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
   background-attachment: fixed;
 
   color: var(--text);
-    }
     .wrap {
       width: min(900px, calc(100% - 32px));
       margin: 0 auto;
