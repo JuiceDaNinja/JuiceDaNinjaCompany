@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Domain Status</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --card: #121a2d;
+      --text: #eef3ff;
+      --muted: #98a6c7;
+      --border: #25314f;
+      --up: #36d399;
+      --down: #fb7185;
+      --checking: #fbbf24;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #16213c 0, var(--bg) 48%);
+      color: var(--text);
+    }
+    .wrap {
+      width: min(900px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 72px 0;
+    }
+    header { text-align: center; margin-bottom: 32px; }
+    h1 { margin: 0 0 10px; font-size: clamp(32px, 6vw, 52px); }
+    header p { margin: 0; color: var(--muted); }
+    .overall, .site {
+      background: rgba(18,26,45,.88);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.22);
+    }
+    .overall {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+    }
+    .dot {
+      width: 13px;
+      height: 13px;
+      border-radius: 999px;
+      background: var(--checking);
+      box-shadow: 0 0 18px currentColor;
+      flex: 0 0 auto;
+    }
+    .overall strong { display:block; font-size: 17px; }
+    .overall small { color: var(--muted); }
+    .list { display: grid; gap: 12px; }
+    .site {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 18px;
+      padding: 18px 20px;
+    }
+    .name { font-weight: 750; margin-bottom: 5px; }
+    .url { color: var(--muted); font-size: 14px; overflow-wrap:anywhere; }
+    .right { text-align: right; }
+    .status { font-weight: 800; }
+    .latency { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .up { color: var(--up); }
+    .down { color: var(--down); }
+    .checking { color: var(--checking); }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 22px;
+      line-height: 1.6;
+    }
+    button {
+      display: block;
+      margin: 18px auto 0;
+      border: 1px solid var(--border);
+      background: #18233c;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 15px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { background: #202d4b; }
+    @media (max-width: 560px) {
+      .wrap { padding-top: 42px; }
+      .site { grid-template-columns: 1fr; }
+      .right { text-align:left; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <h1>Service Status</h1>
+      <p>Live reachability checks for my websites and services.</p>
+    </header>
+
+    <section class="overall">
+      <span id="overallDot" class="dot"></span>
+      <div>
+        <strong id="overallText">Checking services…</strong>
+        <small id="lastChecked">Please wait</small>
+      </div>
+    </section>
+
+    <section id="siteList" class="list"></section>
+
+    <button id="refreshBtn" type="button">Check again</button>
+
+    <footer>
+      Automatically checks every 60 seconds.<br>
+      Static status page hosted with GitHub Pages.
+    </footer>
+  </main>
+
+  <script>
+    // ============================================================
+    // EDIT THIS LIST.
+    // Add or remove as many domains/services as you want.
+    // Always include https:// or http://
+    // ============================================================
+    const services = [
+      { name: "Main Website", url: "https://juicedaninja.com" },
+      { name: "AI Service",   url: "https://ai.juicedaninja.company" }
+    ];
+
+    const CHECK_EVERY_MS = 60_000;
+    const TIMEOUT_MS = 10_000;
+
+    const siteList = document.getElementById("siteList");
+    const overallText = document.getElementById("overallText");
+    const overallDot = document.getElementById("overallDot");
+    const lastChecked = document.getElementById("lastChecked");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    function render() {
+      siteList.innerHTML = services.map((service, i) => `
+        <article class="site">
+          <div>
+            <div class="name">${escapeHtml(service.name)}</div>
+            <div class="url">${escapeHtml(service.url)}</div>
+          </div>
+          <div class="right">
+            <div id="status-${i}" class="status checking">CHECKING</div>
+            <div id="latency-${i}" class="latency">—</div>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function checkService(service, index) {
+      const statusEl = document.getElementById(`status-${index}`);
+      const latencyEl = document.getElementById(`latency-${index}`);
+
+      statusEl.textContent = "CHECKING";
+      statusEl.className = "status checking";
+      latencyEl.textContent = "Checking…";
+
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      const start = performance.now();
+
+      try {
+        // no-cors lets a static GitHub Pages site attempt a cross-origin
+        // reachability check without requiring CORS headers on the target.
+        // It detects DNS/TLS/network/timeout failures, but cannot read the
+        // target HTTP status code.
+        await fetch(service.url + (service.url.includes("?") ? "&" : "?") +
+          "_status_check=" + Date.now(), {
+          method: "GET",
+          mode: "no-cors",
+          cache: "no-store",
+          signal: controller.signal
+        });
+
+        const elapsed = Math.round(performance.now() - start);
+        statusEl.textContent = "OPERATIONAL";
+        statusEl.className = "status up";
+        latencyEl.textContent = `${elapsed} ms`;
+        return true;
+      } catch (error) {
+        statusEl.textContent = "DOWN";
+        statusEl.className = "status down";
+        latencyEl.textContent =
+          error.name === "AbortError" ? "Timed out" : "Unreachable";
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    async function checkAll() {
+      refreshBtn.disabled = true;
+      overallText.textContent = "Checking services…";
+      overallDot.style.background = "var(--checking)";
+
+      const results = await Promise.all(
+        services.map((service, index) => checkService(service, index))
+      );
+
+      const downCount = results.filter(result => !result).length;
+
+      if (downCount === 0) {
+        overallText.textContent = "All systems operational";
+        overallDot.style.background = "var(--up)";
+      } else {
+        overallText.textContent =
+          `${downCount} service${downCount === 1 ? "" : "s"} unavailable`;
+        overallDot.style.background = "var(--down)";
+      }
+
+      lastChecked.textContent =
+        "Last checked: " + new Date().toLocaleString();
+
+      refreshBtn.disabled = false;
+    }
+
+    render();
+    checkAll();
+    refreshBtn.addEventListener("click", checkAll);
+    setInterval(checkAll, CHECK_EVERY_MS);
+  </script>
+</body>
+</html>
